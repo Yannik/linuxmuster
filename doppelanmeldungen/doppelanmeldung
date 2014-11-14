@@ -5,11 +5,12 @@
 # Rechner neu.
 #############################
 
-# neustart=1 --> Rechner werden eine Minute nach der Warnung herunter-gefahren
+# reboot=1 --> Rechner werden eine Minute nach der Warnung herunter-gefahren
 # falls dann immer noch mehrfache Anmeldungen vorliegen.
-# neustart=0 --> Es wird nur eine Meldung erzeugt und eine Mail an den Administrator
-neustart=1
+# reboot=0 --> Es wird nur eine Meldung erzeugt und eine Mail an den Administrator
+reboot=1
 
+target_email="root"
 
 # der Pfad ist wichtig, damit das Skript auch als CRON-Job funktioniert
 PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/bin/X11:/opt/morz/bin"
@@ -48,9 +49,9 @@ for login in $duplicates; do
   hostcount=$(echo $RECHNER | wc -l)
   [[ "$hostcount" == 0 ]] && continue #may be < 2 due to uniq -u filtering out multiple entries for the same host
   # bei allen anderen werden noch Name und Klasse ermittelt.
-  KLASSE=$(/usr/sbin/sophomorix-user -u $login| grep PrimaryGroup | cut -d ":" -f2 | awk -F "  " ' { print $1 }' | sed 's/^ //g')
-  NAME=$(/usr/sbin/sophomorix-user -u $login| grep Gecos | cut -d ":" -f2 | awk -F "  " ' { print $1 }' | sed 's/^ //g')
-  if [[ "$neustart" == "1" ]]
+  primarygroup=$(/usr/sbin/sophomorix-user -u $login| grep PrimaryGroup | cut -d ":" -f2 | awk -F "  " ' { print $1 }' | sed 's/^ //g')
+  fullname=$(/usr/sbin/sophomorix-user -u $login| grep Gecos | cut -d ":" -f2 | awk -F "  " ' { print $1 }' | sed 's/^ //g')
+  if [[ "$reboot" == "1" ]]
   then
    if [ -e ${TMP}/$login ] # wenn beim letzten Lauf schon verwarnt wurde, rechner herunterfahren...
    then
@@ -63,8 +64,8 @@ for login in $duplicates; do
           done
 
    else # sonst warnen...
-    /opt/morz/bin/message-user $login "$NAME, du bist an $hostcount Rechnern gleichzeitig angemeldet.\n\nDas ist verboten. \n\nMelde dich sofort überall ab, wo du nicht persönlich dran sitzt.\n\nRechner an denen du angemeldet bist: $(echo $RECHNER | sed 's/ /, /g') \n\n\n Tust du das nicht sofort, werden alle diese Rechner in 1 Minute heruntergefahren..."
-    echo -e "$NAME aus der Klasse $KLASSE ist an $hostcount Rechnern angemeldet:\n\n$(echo $RECHNER| sed 's/ /, /g')" | mail -s "Mehrfachanmeldung von $NAME, $KLASSE" administrator@morz.de
+    /opt/morz/bin/message-user $login "$fullname, du bist an $hostcount Rechnern gleichzeitig angemeldet.\n\nDas ist verboten. \n\nMelde dich sofort überall ab, wo du nicht persönlich dran sitzt.\n\nRechner an denen du angemeldet bist: $(echo $RECHNER | sed 's/ /, /g') \n\n\n Tust du das nicht sofort, werden alle diese Rechner in 1 Minute heruntergefahren..."
+    echo -e "$fullname aus der Gruppe $primarygroup ist an $hostcount Rechnern angemeldet:\n\n$(echo $host| sed 's/ /, /g')" | mail -s "Mehrfachanmeldung von $fullname, $primarygroup" "$targetemail"
     sleep 1
     touch ${TMP}/$login
     sleep 1
