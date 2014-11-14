@@ -45,7 +45,7 @@ duplicates=$(smbstatus -b | tail -n+5 | sed 's/  */;/g' | cut -d";" -f2 | sort |
 for login in $duplicates; do
   containsElement "$login" "$allowed_users" && continue
   # find all hosts user is logged in on
-  hosts=$(smbstatus -b -u $login | tail -n +5 | grep -Eo '[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}' | uniq -u)
+  hosts=$(smbstatus -b -u $login | tail -n +5 | grep -Eo '[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}' | sed -e "s/\n/ /g" | uniq -u )
   hostcount=$(echo $RECHNER | wc -l)
   [[ "$hostcount" == 0 ]] && continue #may be < 2 due to uniq -u filtering out multiple entries for the same host
   # bei allen anderen werden noch Name und Klasse ermittelt.
@@ -65,7 +65,7 @@ for login in $duplicates; do
 
    else # sonst warnen...
     /opt/morz/bin/message-user $login "$fullname, du bist an $hostcount Rechnern gleichzeitig angemeldet.\n\nDas ist verboten. \n\nMelde dich sofort überall ab, wo du nicht persönlich dran sitzt.\n\nRechner an denen du angemeldet bist: $(echo $RECHNER | sed 's/ /, /g') \n\n\n Tust du das nicht sofort, werden alle diese Rechner in 1 Minute heruntergefahren..."
-    echo -e "$fullname aus der Gruppe $primarygroup ist an $hostcount Rechnern angemeldet:\n\n$(echo $host| sed 's/ /, /g')" | mail -s "Mehrfachanmeldung von $fullname, $primarygroup" "$targetemail"
+    echo -e "$fullname aus der Gruppe $primarygroup ist an $hostcount Rechnern angemeldet:\n\n$(echo $hosts| sed 's/ /, /g')" | mail -s "Mehrfachanmeldung von $fullname, $primarygroup" "$targetemail"
     sleep 1
     touch ${TMP}/$login
     sleep 1
