@@ -14,24 +14,22 @@ neustart=1
 # der Pfad ist wichtig, damit das Skript auch als CRON-Job funktioniert
 PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/bin/X11:/opt/morz/bin"
 
-# bis zu vier Ausnahmen können hier konfiguriert werden. Diese User dürfen sich mehrfach anmelden
-AUSNAHME1="HIERKANNEINLOGINSTEHEN"
-AUSNAHME2="HIERKANNNOCHEINLOGINSTEHEN"
-AUSNAHME3="administrator"
-AUSNAHME4="HIERKANNEINVIERTERLOGINSTEHEN"
+# these space-separated users are allowed to login multiple times
+allowed_users='user1 user2'
 
 # Meldung, die der Nutzer nach dem Neustart erhält: "LOGIN," wird automatisch davor gesetzt. \n erzeugt einen Zeilenumbruch
 NACHNEUSTARTMSG="du hast die letzte Warnung nicht ernst genommen und warst weiterhin an mehreren Rechnern gleichzeitig angemeldet. \n Alle Rechner, an denen du angemeldet warst, wurden neu gestartet.\n\n Denke daran: \n - Du darfst dein Passwort nicht weitergeben, \n - Du darfst nicht mit fremden Accounts arbeiten und \n - Du darfst auch nicht andere mit deinem Account arbeiten lassen..."
-
-# zu debugzwecken lässt sich hier der Befehl für den Anmeldestatus ändern.
-SMBSTATUS="smbstatus -b"
-#SMBSTATUS="cat testsmbstatus"
 
 # debug=1 bewirkt, dass die Herunterfahr-Befehle nicht ausgeführt, sondern auf der Console ausgegeben werden.
 debug=0
 
 # wohin darf das Skript schreiben?
 TMP="/tmp/doppelanmeldungen"
+
+containsElement () {
+  for e in $2; do [ "$e" = "$1" ] && return 0; done
+  return 1
+}
 
 # falls es nicht existiert wird das temp-Verzeichnis angelegt
 mkdir -p $TMP
@@ -42,13 +40,13 @@ then	#wenn TempDir nicht leer ist, bereinigen...
 fi
 
 # herausfinden, wer doppelt angemeldet ist.
-DOPPELT=$($SMBSTATUS | tail -n+5 | sed 's/  */;/g' | cut -d";" -f2 | sort | grep -v "$AUSNAHME1" | grep -v "$AUSNAHME2" | grep -v "$AUSNAHME3" | grep -v "$AUSNAHME4" | uniq -d)
-for login in $DOPPELT
-do
-  # für alle doppelt angemeldeten werden jetzt die IP-Adressen der unterschiedlichen Rechner herausgefunden und gezählt
-  RECHNER=$($SMBSTATUS | grep $login | sed 's/  */;/g' | cut -d";" -f4| sort | sed -e "s/(//g" | sed -e "s/)//g" | sed -e "s/ /\n/g" | uniq -u | sed -e "s/\n/ /g")
-  ANZAHL=$(echo $RECHNER | wc -w)
-  [[ "$ANZAHL" == 0 ]] && continue # Falls die Anmeldungen an ein und demselben Rechner sind, dann ist das hier null wg. uniq -u... dann mit dem nächsten weitermachen...
+duplicates=$(smbstatus -b | tail -n+5 | sed 's/  */;/g' | cut -d";" -f2 | sort | uniq -d)
+for login in $duplicates; do
+  containsElement "$login" "$allowed_users" && continue
+  # find all hosts user is logged in on
+  hosts=$(smbstatus -b -u $login | tail -n +5 | grep -Eo '[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}' | uniq -u)
+  hostcount=$(echo $RECHNER | wc -l)
+  [[ "$hostcount" == 0 ]] && continue #may be < 2 due to uniq -u filtering out multiple entries for the same host
   # bei allen anderen werden noch Name und Klasse ermittelt.
   KLASSE=$(/usr/sbin/sophomorix-user -u $login| grep PrimaryGroup | cut -d ":" -f2 | awk -F "  " ' { print $1 }' | sed 's/^ //g')
   NAME=$(/usr/sbin/sophomorix-user -u $login| grep Gecos | cut -d ":" -f2 | awk -F "  " ' { print $1 }' | sed 's/^ //g')
@@ -58,15 +56,15 @@ do
    then
 	[[ "$debug" == "0" ]] &&  /opt/morz/bin/message-user $login "$login, $NACHNEUSTARTMSG"
 	sleep 1 # kurz warten
-	for IP in $RECHNER
+	for host in $hosts
           do
-                [[ "$debug" == "0" ]] && ssh root@$IP reboot
-                [[ "$debug" == "1" ]] && echo "ssh root@$IP reboot"
+                [[ "$debug" == "0" ]] && ssh root@$host reboot
+                [[ "$debug" == "1" ]] && echo "ssh root@$host reboot"
           done
 
    else # sonst warnen...
-    /opt/morz/bin/message-user $login "$NAME, du bist an $ANZAHL Rechnern gleichzeitig angemeldet.\n\nDas ist verboten. \n\nMelde dich sofort überall ab, wo du nicht persönlich dran sitzt.\n\nRechner an denen du angemeldet bist: $(echo $RECHNER | sed 's/ /, /g') \n\n\n Tust du das nicht sofort, werden alle diese Rechner in 1 Minute heruntergefahren..."
-    echo -e "$NAME aus der Klasse $KLASSE ist an $ANZAHL Rechnern angemeldet:\n\n$(echo $RECHNER| sed 's/ /, /g')" | mail -s "Mehrfachanmeldung von $NAME, $KLASSE" administrator@morz.de
+    /opt/morz/bin/message-user $login "$NAME, du bist an $hostcount Rechnern gleichzeitig angemeldet.\n\nDas ist verboten. \n\nMelde dich sofort überall ab, wo du nicht persönlich dran sitzt.\n\nRechner an denen du angemeldet bist: $(echo $RECHNER | sed 's/ /, /g') \n\n\n Tust du das nicht sofort, werden alle diese Rechner in 1 Minute heruntergefahren..."
+    echo -e "$NAME aus der Klasse $KLASSE ist an $hostcount Rechnern angemeldet:\n\n$(echo $RECHNER| sed 's/ /, /g')" | mail -s "Mehrfachanmeldung von $NAME, $KLASSE" administrator@morz.de
     sleep 1
     touch ${TMP}/$login
     sleep 1
