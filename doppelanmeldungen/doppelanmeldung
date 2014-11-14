@@ -46,7 +46,7 @@ for login in $duplicates; do
   containsElement "$login" "$allowed_users" && continue
   # find all hosts user is logged in on
   hosts=$(smbstatus -b -u $login | tail -n +5 | grep -Eo '[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}' | sed -e "s/\n/ /g" | uniq -u )
-  hostcount=$(echo $RECHNER | wc -l)
+  hostcount=$(echo $hosts | wc -l)
   [[ "$hostcount" == 0 ]] && continue #may be < 2 due to uniq -u filtering out multiple entries for the same host
   # bei allen anderen werden noch Name und Klasse ermittelt.
   primarygroup=$(/usr/sbin/sophomorix-user -u $login| grep PrimaryGroup | cut -d ":" -f2 | awk -F "  " ' { print $1 }' | sed 's/^ //g')
